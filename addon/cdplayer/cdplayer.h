@@ -21,32 +21,32 @@
 #define _circle_net_syslogdaemon_h
 
 #include <circle/logger.h>
+#include <circle/machineinfo.h>
 #include <circle/sched/synchronizationevent.h>
 #include <circle/sched/task.h>
+#include <circle/sound/hdmisoundbasedevice.h>
+#include <circle/sound/i2ssoundbasedevice.h>
+#include <circle/sound/pwmsoundbasedevice.h>
+#include <circle/sound/usbsoundbasedevice.h>
 #include <circle/time.h>
 #include <circle/timer.h>
 #include <circle/types.h>
+#include <circle/util.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
-#include <circle/sound/pwmsoundbasedevice.h>
-#include <circle/sound/i2ssoundbasedevice.h>
-#include <circle/sound/hdmisoundbasedevice.h>
-#include <circle/sound/usbsoundbasedevice.h>
-#include <circle/machineinfo.h>
-#include <circle/util.h>
 
 #define SYSLOG_VERSION 1
 #define SYSLOG_PORT 514
 #define SECTOR_SIZE 2352
 #define BATCH_SIZE 16
-#define FRAMES_PER_SECTOR (SECTOR_SIZE / 4) // bytes per stereo frame
+#define FRAMES_PER_SECTOR (SECTOR_SIZE / 4)  // bytes per stereo frame
 #define BUFFER_SIZE (FRAMES_PER_SECTOR * BATCH_SIZE)
 
-#define FORMAT		SoundFormatSigned16
-#define TYPE		s16
-#define TYPE_SIZE	sizeof (s16)
-#define FACTOR		((1 << 15)-1)
-#define NULL_LEVEL	0
+#define FORMAT SoundFormatSigned16
+#define TYPE s16
+#define TYPE_SIZE sizeof(s16)
+#define FACTOR ((1 << 15) - 1)
+#define NULL_LEVEL 0
 
 class CCDPlayer : public CTask {
    public:
@@ -56,21 +56,20 @@ class CCDPlayer : public CTask {
     void Run(void);
 
     enum PlayState {
-	    STOP,
-	    SEEK,
-	    SEEK_PLAY,
-	    PLAY
+        STOP,
+        SEEK,
+        SEEK_PLAY,
+        PLAY
     };
 
    private:
-
    private:
     CSynchronizationEvent m_Event;
     static CCDPlayer *s_pThis;
-    CSoundBaseDevice	*m_pSound;
-    CDevice		*m_BinFileDevice;
-    u32			address;
-    PlayState		state;
+    CSoundBaseDevice *m_pSound;
+    CDevice *m_BinFileDevice;
+    u32 address;
+    PlayState state;
     u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE];
 };
 
