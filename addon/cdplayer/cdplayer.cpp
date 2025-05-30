@@ -124,42 +124,42 @@ void CCDPlayer::Run(void) {
 
         while (state == PLAY) {
             // Get available queue size in stereo frames
-                        u32 available_queue_size = total_queue_size - m_pSound->GetQueueFramesAvail());
+            u32 available_queue_size = total_queue_size - m_pSound->GetQueueFramesAvail();
 
-                        // Determine how many *full CD sectors* can fit into this free space
-                        //    (1 CD sector = 588 stereo frames)
-                        u32 sectors_that_can_fit_in_queue = available_queue_size / FRAMES_PER_SECTOR;
+            // Determine how many *full CD sectors* can fit into this free space
+            //    (1 CD sector = 588 stereo frames)
+            u32 sectors_that_can_fit_in_queue = available_queue_size / FRAMES_PER_SECTOR;
 
-                        u32 bytes_to_read = SECTOR_SIZE * sectors_that_can_fit_in_queue;
+            u32 bytes_to_read = SECTOR_SIZE * sectors_that_can_fit_in_queue;
 
-                        if (bytes_to_read) {
-                            // Perform the single large read
-                            int readCount = m_pBinFile->Read(m_FileChunk, bytes_to_read);
-                            MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
+            if (bytes_to_read) {
+                // Perform the single large read
+                int readCount = m_pBinFile->Read(m_FileChunk, bytes_to_read);
+                MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
 
-                            if (readCount < static_cast<int>(bytes_to_read)) {
-                                // Handle error: partial read
-                                LOGERR("Partial read");
-                                // TODO store error condition and return via dedicated method call
-                                state = STOP;
-                                break;
-                            }
+                if (readCount < static_cast<int>(bytes_to_read)) {
+                    // Handle error: partial read
+                    LOGERR("Partial read");
+                    // TODO store error condition and return via dedicated method call
+                    state = STOP;
+                    break;
+                }
 
-                            // Keep track of where we are
-                            address += (readCount / SECTOR_SIZE);
+                // Keep track of where we are
+                address += (readCount / SECTOR_SIZE);
 
-                            // Write to sound device
-                            int writeCount = m_pSound->Write(m_FileChunk, readCount);
-                            if (writeCount != readCount) {
-                                LOGERR("Couldn't write to sound device");
-                                // TODO store error condition and return via dedicated method call
-                                state = STOP;
-                                break;
-                            }
-                        }
+                // Write to sound device
+                int writeCount = m_pSound->Write(m_FileChunk, readCount);
+                if (writeCount != readCount) {
+                    LOGERR("Couldn't write to sound device");
+                    // TODO store error condition and return via dedicated method call
+                    state = STOP;
+                    break;
+                }
+            }
 
-                        // Let other tasks have cpu time
-                        CScheduler::Current()->Yield();
+            // Let other tasks have cpu time
+            CScheduler::Current()->Yield();
         }
     }
 }
