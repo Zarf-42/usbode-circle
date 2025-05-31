@@ -36,6 +36,7 @@
 #include <circle/timer.h>
 #include <circle/types.h>
 #include <circle/usb/gadget/usbcdgadget.h>
+#include <circle/usb/gadget/usbmsdgadget.h>
 #include <discimage/cuebinfile.h>
 #include <fatfs/ff.h>
 #include <filelogdaemon/filelogdaemon.h>
@@ -84,6 +85,7 @@ private:
 	CBcm4343Device          m_WLAN;
         CNetSubSystem           m_Net;
         CWPASupplicant          m_WPASupplicant;
+	CUSBMSDGadget		m_MSDGadget;
 	CUSBCDGadget		m_CDGadget;
 
 	// SPI and display components

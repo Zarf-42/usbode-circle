@@ -46,7 +46,8 @@ CKernel::CKernel (void)
     m_WLAN (FIRMWARE_PATH),
     m_Net (0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
     m_WPASupplicant (SUPPLICANT_CONFIG_FILE),
-    m_CDGadget (&m_Interrupt),
+    m_MSDGadget (&m_Interrupt),
+    m_CDGadget (&m_Interrupt, &m_MSDGadget),
     m_pSPIMaster(nullptr),
     m_pDisplayManager(nullptr)
 {
@@ -185,6 +186,7 @@ TShutdownMode CKernel::Run (void)
         return ShutdownHalt;
     }
 
+    m_MSDGadget.SetDevice(&m_EMMC);
     m_CDGadget.SetDevice(cueBinFileDevice);
     m_CDGadget.Initialize();
 

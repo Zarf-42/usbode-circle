@@ -31,6 +31,7 @@
 #include <circle/types.h>
 #include <circle/usb/gadget/dwusbgadget.h>
 #include <circle/usb/gadget/usbcdgadgetendpoint.h>
+#include <circle/usb/gadget/usbmsdgadgetendpoint.h>
 #include <circle/usb/usb.h>
 #include <cueparser/cueparser.h>
 #include <discimage/cuebinfile.h>
@@ -250,7 +251,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note pDevice must be initialized yet, when it is specified here.
     /// \note SetDevice() has to be called later, when pDevice is not specified here.
-    CUSBCDGadget(CInterruptSystem *pInterruptSystem, CCueBinFileDevice *pDevice = nullptr);
+    CUSBCDGadget(CInterruptSystem *pInterruptSystem, CUSBMSDGadget *pUSBMSDGadget = nullptr, CCueBinFileDevice *pDevice = nullptr);
 
     ~CUSBCDGadget(void);
 
@@ -317,15 +318,23 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     u32 lba_to_msf(u32 lba);
 
    private:
+    CUSBMSDGadget *m_pUSBMSDGadget;
     CCueBinFileDevice *m_pDevice;
 
     enum TEPNumber {
-        EPIn = 1,
-        EPOut = 2,
+        CDEPIn = 1,
+        CDEPOut = 2,
         NumEPs
     };
 
     CUSBCDGadgetEndpoint *m_pEP[NumEPs];
+
+    enum MTEPNumber {
+        MSDEPIn = 1,
+        MSDEPOut = 2,
+        NumMEPs
+    };
+    CUSBMSDGadgetEndpoint *m_pMSDEP[NumMEPs];
 
     u8 m_StringDescriptorBuffer[80];
 
@@ -335,8 +344,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     struct TUSBMSTGadgetConfigurationDescriptor {
         TUSBConfigurationDescriptor Configuration;
         TUSBInterfaceDescriptor Interface;
-        TUSBEndpointDescriptor EndpointIn;
-        TUSBEndpointDescriptor EndpointOut;
+        TUSBEndpointDescriptor CDEndpointIn;
+        TUSBEndpointDescriptor CDEndpointOut;
+        TUSBEndpointDescriptor MSDEndpointIn;
+        TUSBEndpointDescriptor MSDEndpointOut;
     } PACKED;
 
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptor;

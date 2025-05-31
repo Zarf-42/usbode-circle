@@ -26,6 +26,7 @@
 #include <circle/sysconfig.h>
 #include <circle/usb/gadget/usbcdgadget.h>
 #include <circle/usb/gadget/usbcdgadgetendpoint.h>
+#include <circle/usb/gadget/usbmsdgadgetendpoint.h>
 #include <circle/util.h>
 #include <math.h>
 #include <stddef.h>
@@ -89,6 +90,22 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             2,                                                                           // bmAttributes (Bulk)
             static_cast<uint16_t>(CKernelOptions::Get()->GetUSBFullSpeed() ? 64 : 512),  // wMaxPacketSize
             0                                                                            // bInterval
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x83,                                                                        // IN number 1
+            2,                                                                           // bmAttributes (Bulk)
+            static_cast<uint16_t>(CKernelOptions::Get()->GetUSBFullSpeed() ? 64 : 512),  // wMaxPacketSize
+            0                                                                            // bInterval
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x04,                                                                        // OUT number 2
+            2,                                                                           // bmAttributes (Bulk)
+            static_cast<uint16_t>(CKernelOptions::Get()->GetUSBFullSpeed() ? 64 : 512),  // wMaxPacketSize
+            0                                                                            // bInterval
         }};
 
 const char* const CUSBCDGadget::s_StringDescriptor[] =
@@ -97,11 +114,14 @@ const char* const CUSBCDGadget::s_StringDescriptor[] =
         "USBODE",
         "USB Optical Disk Emulator"};
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, CCueBinFileDevice* pDevice)
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, CUSBMSDGadget *pUSBMSDGadget, CCueBinFileDevice* pDevice)
     : CDWUSBGadget(pInterruptSystem,
                    CKernelOptions::Get()->GetUSBFullSpeed() ? FullSpeed : HighSpeed),
+      m_pUSBMSDGadget(pUSBMSDGadget),
       m_pDevice(pDevice),
-      m_pEP{nullptr, nullptr, nullptr} {
+      m_pEP{nullptr, nullptr, nullptr},
+      m_pMSDEP{nullptr, nullptr, nullptr} 
+{
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered");
     if (pDevice)
         SetDevice(pDevice);
@@ -153,19 +173,34 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
 
 void CUSBCDGadget::AddEndpoints(void) {
     MLOGNOTE("CUSBCDGadget::AddEndpoints", "entered");
-    assert(!m_pEP[EPOut]);
-    m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
+    assert(!m_pEP[CDEPOut]);
+    m_pEP[CDEPOut] = new CUSBCDGadgetEndpoint(
         reinterpret_cast<const TUSBEndpointDescriptor*>(
-            &s_ConfigurationDescriptor.EndpointOut),
+            &s_ConfigurationDescriptor.CDEndpointOut),
         this);
-    assert(m_pEP[EPOut]);
+    assert(m_pEP[CDEPOut]);
 
-    assert(!m_pEP[EPIn]);
-    m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
+    assert(!m_pEP[CDEPIn]);
+    m_pEP[CDEPIn] = new CUSBCDGadgetEndpoint(
         reinterpret_cast<const TUSBEndpointDescriptor*>(
-            &s_ConfigurationDescriptor.EndpointIn),
+            &s_ConfigurationDescriptor.CDEndpointIn),
         this);
-    assert(m_pEP[EPIn]);
+    assert(m_pEP[CDEPIn]);
+
+    // Mass Storage Device
+    assert(!m_pMSDEP[MSDEPOut]);
+    m_pMSDEP[MSDEPOut] = new CUSBMSDGadgetEndpoint(
+        reinterpret_cast<const TUSBEndpointDescriptor*>(
+            &s_ConfigurationDescriptor.MSDEndpointOut),
+        m_pUSBMSDGadget);
+    assert(m_pEP[MSDEPOut]);
+
+    assert(!m_pMSDEP[MSDEPIn]);
+    m_pMSDEP[MSDEPIn] = new CUSBMSDGadgetEndpoint(
+        reinterpret_cast<const TUSBEndpointDescriptor*>(
+            &s_ConfigurationDescriptor.MSDEndpointIn),
+        m_pUSBMSDGadget);
+    assert(m_pEP[MSDEPIn]);
 
     m_nState = TCDState::Init;
 }
@@ -318,11 +353,11 @@ void CUSBCDGadget::CreateDevice(void) {
 
 void CUSBCDGadget::OnSuspend(void) {
     MLOGNOTE("CUSBCDGadget::OnSuspend", "entered");
-    delete m_pEP[EPOut];
-    m_pEP[EPOut] = nullptr;
+    delete m_pEP[CDEPOut];
+    m_pEP[CDEPOut] = nullptr;
 
-    delete m_pEP[EPIn];
-    m_pEP[EPIn] = nullptr;
+    delete m_pEP[CDEPIn];
+    m_pEP[CDEPIn] = nullptr;
 
     m_nState = TCDState::Init;
 }
@@ -369,7 +404,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
         switch (m_nState) {
             case TCDState::SentCSW: {
                 m_nState = TCDState::ReceiveCBW;
-                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                m_pEP[CDEPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
                                             m_OutBuffer, SIZE_CBW);
                 break;
             }
@@ -408,14 +443,14 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
             case TCDState::ReceiveCBW: {
                 if (nLength != SIZE_CBW) {
                     MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
-                    m_pEP[EPIn]->StallRequest(true);
+                    m_pEP[CDEPIn]->StallRequest(true);
                     break;
                 }
                 memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
                 if (m_CBW.dCBWSignature != VALID_CBW_SIG) {
                     MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",
                             m_CBW.dCBWSignature);
-                    m_pEP[EPIn]->StallRequest(true);
+                    m_pEP[CDEPIn]->StallRequest(true);
                     break;
                 }
                 m_CSW.dCSWTag = m_CBW.dCBWTag;
@@ -441,13 +476,13 @@ void CUSBCDGadget::OnActivate() {
     MLOGNOTE("CD OnActivate", "state = %i", m_nState);
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;
-    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
+    m_pEP[CDEPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
 }
 
 void CUSBCDGadget::SendCSW() {
     // MLOGNOTE ("CUSBCDGadget::SendCSW", "entered");
     memcpy(&m_InBuffer, &m_CSW, SIZE_CSW);
-    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
+    m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
     m_nState = TCDState::SentCSW;
 }
 
@@ -509,7 +544,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             memcpy(&m_InBuffer, &m_ReqSenseReply, length);
 
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, length);
 
             m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -530,7 +565,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             if ((m_CBW.CBWCB[1] & 0x01) == 0) {  // EVPD bit is 0: Standard Inquiry
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
                 memcpy(&m_InBuffer, &m_InqReply, SIZE_INQR);
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, SIZE_INQR);
+                m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, SIZE_INQR);
                 m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0;  // nothing more after this send
                 m_CSW.bmCSWStatus = bmCSWStatus;
@@ -558,7 +593,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                             datalen = allocationLength;
 
                         memcpy(&m_InBuffer, &SupportedVPDPageReply, sizeof(SupportedVPDPageReply));
-                        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                        m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                    m_InBuffer, datalen);
                         m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
@@ -583,7 +618,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                             datalen = allocationLength;
 
                         memcpy(&m_InBuffer, &UnitSerialNumberReply, sizeof(UnitSerialNumberReply));
-                        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                        m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                    m_InBuffer, datalen);
                         m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
@@ -613,7 +648,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                             datalen = allocationLength;
 
                         memcpy(&m_InBuffer, &DeviceIdentificationReply, sizeof(DeviceIdentificationReply));
-                        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                        m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                    m_InBuffer, datalen);
                         m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
@@ -640,7 +675,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             // FIXME
             memcpy(&m_InBuffer, &m_ModeSenseReply, SIZE_MODEREP);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, SIZE_MODEREP);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
@@ -668,7 +703,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);  // this value is the Start address of last recorded lead-out minus 1
             memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, SIZE_READCAPREP);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
@@ -940,7 +975,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 datalen = allocationLength;
 
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
 
@@ -1000,7 +1035,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             // Copy stub data into IN buffer
             memcpy(m_InBuffer, stubSubChannelResponse, datalen);
 
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, datalen);
 
             m_nState = TCDState::DataIn;
@@ -1021,7 +1056,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             memcpy(m_InBuffer, &m_EventStatusReply, length);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
@@ -1072,7 +1107,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             memcpy(m_InBuffer, &cd_physical_format_response_data, length);
 
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
@@ -1095,7 +1130,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             memcpy(m_InBuffer, &m_DiscInfoReply, length);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
@@ -1152,7 +1187,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             memcpy(m_InBuffer, &m_GetConfigurationReply, length);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
@@ -1228,7 +1263,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_ModeSense10Reply.mediumType = GetMediumType();
             memcpy(m_InBuffer, &m_ModeSense10Reply, length);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
@@ -1248,7 +1283,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             memcpy(m_InBuffer, getPerformanceStub, sizeof(getPerformanceStub));
 
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, sizeof(getPerformanceStub));
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
@@ -1336,7 +1371,7 @@ void CUSBCDGadget::Update() {
                     m_nState = TCDState::DataIn;
 
                     // Begin USB transfer of the in-buffer (only valid data)
-                    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, total_copied);
+                    m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, total_copied);
                 }
 
                 // Seek to correct position in underlying storage file
@@ -1389,7 +1424,7 @@ void CUSBCDGadget::Update() {
                         m_nState = TCDState::DataIn;
 
                         // Begin USB transfer of the in-buffer (only valid data)
-                        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, total_read);
+                        m_pEP[CDEPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, total_read);
 
                 }
                         */
