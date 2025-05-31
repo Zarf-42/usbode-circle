@@ -26,6 +26,8 @@
 #include <circle/sysconfig.h>
 #include <circle/usb/gadget/usbcdgadget.h>
 #include <circle/usb/gadget/usbcdgadgetendpoint.h>
+#include <circle/sched/scheduler.h>
+#include <cdplayer/cdplayer.h>
 #include <circle/util.h>
 #include <math.h>
 #include <stddef.h>
@@ -191,13 +193,22 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
 
     cueParser = CUEParser(m_pDevice->GetCueSheet());  // FIXME. Ensure cuesheet is not null or empty
 
-    MLOGNOTE("CUSBCDGadget::InitDevice", "entered");
+    MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
 
     data_skip_bytes = GetSkipbytes();
     data_block_size = GetBlocksize();
 
     m_CDReady = true;
-    MLOGNOTE("CUSBCDGadget::InitDeviceSize", "Block size is %d, m_CDReady = %d", block_size, m_CDReady);
+    MLOGNOTE("CUSBCDGadget::SetDevice", "Block size is %d, m_CDReady = %d", block_size, m_CDReady);
+
+    // Hand the device to the CD Player
+    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+    if (cdplayer) {
+	    cdplayer->SetDevice(dev);
+	    MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
+
+    }
+    
 }
 
 int CUSBCDGadget::GetBlocksize() {
@@ -1163,6 +1174,31 @@ void CUSBCDGadget::HandleSCSICommand() {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF");
 
             // FIXME: implement
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            m_ReqSenseReply.bSenseKey = bSenseKey;
+            m_ReqSenseReply.bAddlSenseCode = bAddlSenseCode;
+            break;
+        }
+
+        case 0x45:  // PLAY AUDIO (10)
+        {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10)");
+
+            // Where to start reading (LBA)
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+            // Number of blocks to read (LBA)
+            m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
+
+
+	    // Hand the device to the CD Player
+            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+            if (cdplayer) {
+                    cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+            } 
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             m_ReqSenseReply.bSenseKey = bSenseKey;

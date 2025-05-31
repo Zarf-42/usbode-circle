@@ -17,6 +17,7 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/addon/wlan/hostap/wpa_supplicant/libwpa_supplicant.a \
           $(CIRCLEHOME)/addon/wlan/libwlan.a \
           $(CIRCLEHOME)/lib/sched/libsched.a \
+	  $(CIRCLEHOME)/lib/sound/libsound.a \
 	  $(CIRCLEHOME)/addon/linux/liblinuxemu.a \
 	  $(CIRCLEHOME)/lib/fs/libfs.a \
 	  $(CIRCLEHOME)/lib/libcircle.a \
@@ -27,6 +28,7 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(USBODEHOME)/addon/filelogdaemon/libfilelogdaemon.a \
 	  $(USBODEHOME)/addon/cueparser/libcueparser.a \
 	  $(USBODEHOME)/addon/ftpserver/libftpserver.a \
+	  $(USBODEHOME)/addon/cdplayer/libcdplayer.a \
 	  $(USBODEHOME)/addon/usbode-display/lib-usbodedisp.a
 
 include $(CIRCLEHOME)/Rules.mk

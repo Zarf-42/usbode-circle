@@ -4,9 +4,9 @@
 
 CIRCLEHOME = ../../circle
 
-OBJS    = mediaplayer.o
+OBJS    = cdplayer.o
 
-libmediaplayer.a: $(OBJS)
+libcdplayer.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)

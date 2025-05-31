@@ -17,8 +17,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#ifndef _circle_net_syslogdaemon_h
-#define _circle_net_syslogdaemon_h
+#ifndef _ccdplayer_h
+#define _ccdplayer_h
 
 #include <circle/logger.h>
 #include <circle/machineinfo.h>
@@ -28,6 +28,7 @@
 #include <circle/sound/i2ssoundbasedevice.h>
 #include <circle/sound/pwmsoundbasedevice.h>
 #include <circle/sound/usbsoundbasedevice.h>
+#include <circle/new.h>
 #include <circle/time.h>
 #include <circle/timer.h>
 #include <circle/types.h>
@@ -50,9 +51,14 @@
 
 class CCDPlayer : public CTask {
    public:
-    CCDPlayer(const char *pSoundDevice);
+    CCDPlayer(CSoundBaseDevice *pSound);
     ~CCDPlayer(void);
     boolean Initialize();
+    boolean SetDevice(CDevice *pBinFileDevice);
+    boolean Pause();
+    boolean Resume();
+    boolean Seek(u32 lba);
+    boolean Play(u32 lba, u32 num_blocks);
     void Run(void);
 
     enum PlayState {
@@ -67,8 +73,9 @@ class CCDPlayer : public CTask {
     CSynchronizationEvent m_Event;
     static CCDPlayer *s_pThis;
     CSoundBaseDevice *m_pSound;
-    CDevice *m_BinFileDevice;
+    CDevice *m_pBinFileDevice;
     u32 address;
+    u32 end_address;
     PlayState state;
     u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE];
 };

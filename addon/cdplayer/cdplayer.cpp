@@ -32,24 +32,33 @@ LOGMODULE("cdplayer");
 
 CCDPlayer *CCDPlayer::s_pThis = 0;
 
-CCDPlayer::CCDPlayer(CSoundBaseDevice *pSound, CDevice *pBinFileDevice)
-    : m_pSound(pSound),
-      m_pBinFile(pBinFileDevice) {
+CCDPlayer::CCDPlayer(CSoundBaseDevice *pSound)
+    : m_pSound(pSound)
+{
     assert(m_pSound != 0);
 
     // I am the one and only!
     assert(s_pThis == 0);
     s_pThis = this;
 
+    LOGNOTE("CD Player starting");
     SetName("cdplayer");
     Initialize();
 }
 
+boolean CCDPlayer::SetDevice(CDevice *pBinFileDevice) {
+	LOGNOTE("CD Player setting device");
+	state = STOP;
+	address = 0;
+	m_pBinFileDevice = pBinFileDevice; 
+	return true;
+}
+
 boolean CCDPlayer::Initialize() {
     // configure sound device
-    LOGNOTE("Allocating queue size %d frames", BUFFER_SIZE);
+    LOGNOTE("CD Player Initializing. Allocating queue size %d frames", BUFFER_SIZE);
     if (!m_pSound->AllocateQueueFrames(BUFFER_SIZE)) {
-                LOGERR()"Cannot allocate sound queue");
+                LOGERR("Cannot allocate sound queue");
                 // TODO: handle error condition
     }
 
@@ -62,24 +71,28 @@ CCDPlayer::~CCDPlayer(void) {
     s_pThis = 0;
 }
 
-bool CCDPlayer::Pause() {
+boolean CCDPlayer::Pause() {
+    LOGNOTE("CD Player pausing");
     state = STOP;
     return true;
 }
 
-bool CCDPlayer::Resume() {
+boolean CCDPlayer::Resume() {
+    LOGNOTE("CD Player resuming");
     state = PLAY;
     return true;
 }
 
-bool CCDPlayer::Seek(u32 lba) {
+boolean CCDPlayer::Seek(u32 lba) {
     // See to the new lba
+    LOGNOTE("CD Player seeking to %u", lba);
     address = lba;
     state = SEEK;
     return true;
 }
 
-bool CCDPlayer::Play(u32 lba) {
+boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
+    LOGNOTE("CD Player playing from %u for %u blocks", lba, num_blocks);
     // The PlayAudio SCSI command has some weird exceptions
     // for LBA addresses:-
     //
@@ -99,6 +112,7 @@ bool CCDPlayer::Play(u32 lba) {
     } else {
         // play from new lba
         address = lba;
+	end_address = address + num_blocks;
         state = SEEK_PLAY;
     }
     return true;
@@ -110,7 +124,8 @@ void CCDPlayer::Run(void) {
     // Play loop
     while (true) {
         if (state == SEEK || state == SEEK_PLAY) {
-            u64 offset = m_pBinFile->Seek(address * SECTOR_SIZE);
+            LOGNOTE("Seeking to %lu", address * SECTOR_SIZE);
+            u64 offset = m_pBinFileDevice->Seek(address * SECTOR_SIZE);
             if (offset != (u64)(-1)) {
                 if (state == SEEK_PLAY)
                     state = PLAY;
@@ -123,6 +138,7 @@ void CCDPlayer::Run(void) {
         }
 
         while (state == PLAY) {
+            LOGNOTE("Playing");
             // Get available queue size in stereo frames
             u32 available_queue_size = total_queue_size - m_pSound->GetQueueFramesAvail();
 
@@ -133,9 +149,10 @@ void CCDPlayer::Run(void) {
             u32 bytes_to_read = SECTOR_SIZE * sectors_that_can_fit_in_queue;
 
             if (bytes_to_read) {
+		LOGNOTE("Reading %lu sectors", bytes_to_read);
                 // Perform the single large read
-                int readCount = m_pBinFile->Read(m_FileChunk, bytes_to_read);
-                MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
+                int readCount = m_pBinFileDevice->Read(m_FileChunk, bytes_to_read);
+                LOGDBG("Read %d bytes in batch", readCount);
 
                 if (readCount < static_cast<int>(bytes_to_read)) {
                     // Handle error: partial read
@@ -148,6 +165,13 @@ void CCDPlayer::Run(void) {
                 // Keep track of where we are
                 address += (readCount / SECTOR_SIZE);
 
+		// Should we stop?
+		if (address >= end_address) {
+			LOGNOTE("Finished playing");
+			state = STOP;
+			break;
+		}
+
                 // Write to sound device
                 int writeCount = m_pSound->Write(m_FileChunk, readCount);
                 if (writeCount != readCount) {
@@ -159,7 +183,8 @@ void CCDPlayer::Run(void) {
             }
 
             // Let other tasks have cpu time
-            CScheduler::Current()->Yield();
+	    CScheduler::Get()->Yield();
         }
+	CScheduler::Get()->Yield();
     }
 }
