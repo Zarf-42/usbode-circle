@@ -26,8 +26,6 @@
 #include <circle/synchronize.h>
 #include <circle/util.h>
 
-#include "config.h"
-
 LOGMODULE("cdplayer");
 
 CCDPlayer *CCDPlayer::s_pThis = 0;
@@ -57,12 +55,18 @@ boolean CCDPlayer::SetDevice(CDevice *pBinFileDevice) {
 boolean CCDPlayer::Initialize() {
     // configure sound device
     LOGNOTE("CD Player Initializing. Allocating queue size %d frames", BUFFER_SIZE);
+    // TODO: set up the sound device in kernel.cpp
     if (!m_pSound->AllocateQueueFrames(BUFFER_SIZE)) {
                 LOGERR("Cannot allocate sound queue");
                 // TODO: handle error condition
     }
-
     m_pSound->SetWriteFormat(FORMAT, WRITE_CHANNELS);
+    if (!m_pSound->Start()) {
+	    LOGERR("Couldn't start the sound device");
+    }
+    unsigned int total_queue_size = m_pSound->GetQueueSizeFrames();
+    boolean isActive = m_pSound->IsActive();
+    LOGNOTE("CD Player Initializing. Allocated queue size %u frames. Player active %d", total_queue_size, isActive);
 
     return TRUE;
 }
@@ -119,16 +123,20 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
 }
 
 void CCDPlayer::Run(void) {
-    u8 total_queue_size = m_pSound->GetQueueSizeFrames();
+    unsigned int total_queue_size = m_pSound->GetQueueSizeFrames();
+    LOGNOTE("CD Player Run Loop initializing. Queue Size is %d frames", total_queue_size);
 
     // Play loop
     while (true) {
         if (state == SEEK || state == SEEK_PLAY) {
-            LOGNOTE("Seeking to %lu", address * SECTOR_SIZE);
-            u64 offset = m_pBinFileDevice->Seek(address * SECTOR_SIZE);
+            LOGNOTE("Seeking to %u", unsigned(address * SECTOR_SIZE));
+            u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
             if (offset != (u64)(-1)) {
-                if (state == SEEK_PLAY)
+		LOGNOTE("Seeking successful");
+                if (state == SEEK_PLAY) {
+                    LOGNOTE("Switching to PLAY mode");
                     state = PLAY;
+		}
             } else {
                 LOGERR("Error seeking");
                 // TODO store error condition and return via dedicated method call
@@ -138,23 +146,22 @@ void CCDPlayer::Run(void) {
         }
 
         while (state == PLAY) {
-            LOGNOTE("Playing");
             // Get available queue size in stereo frames
-            u32 available_queue_size = total_queue_size - m_pSound->GetQueueFramesAvail();
+            unsigned int available_queue_size = total_queue_size - m_pSound->GetQueueFramesAvail();
 
             // Determine how many *full CD sectors* can fit into this free space
             //    (1 CD sector = 588 stereo frames)
-            u32 sectors_that_can_fit_in_queue = available_queue_size / FRAMES_PER_SECTOR;
+            unsigned int sectors_that_can_fit_in_queue = available_queue_size / FRAMES_PER_SECTOR;
 
-            u32 bytes_to_read = SECTOR_SIZE * sectors_that_can_fit_in_queue;
+            int bytes_to_read = SECTOR_SIZE * sectors_that_can_fit_in_queue;
 
             if (bytes_to_read) {
-		LOGNOTE("Reading %lu sectors", bytes_to_read);
+		LOGNOTE("Reading %u bytes", bytes_to_read);
                 // Perform the single large read
                 int readCount = m_pBinFileDevice->Read(m_FileChunk, bytes_to_read);
-                LOGDBG("Read %d bytes in batch", readCount);
+                LOGDBG("Read %d bytes", readCount);
 
-                if (readCount < static_cast<int>(bytes_to_read)) {
+                if (readCount < bytes_to_read) {
                     // Handle error: partial read
                     LOGERR("Partial read");
                     // TODO store error condition and return via dedicated method call
@@ -162,6 +169,7 @@ void CCDPlayer::Run(void) {
                     break;
                 }
 
+		LOGNOTE("We are at %u", address);
                 // Keep track of where we are
                 address += (readCount / SECTOR_SIZE);
 
@@ -173,6 +181,7 @@ void CCDPlayer::Run(void) {
 		}
 
                 // Write to sound device
+		LOGNOTE("About to write %d bytes", readCount);
                 int writeCount = m_pSound->Write(m_FileChunk, readCount);
                 if (writeCount != readCount) {
                     LOGERR("Couldn't write to sound device");

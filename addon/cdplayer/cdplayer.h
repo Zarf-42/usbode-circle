@@ -39,10 +39,11 @@
 #define SYSLOG_VERSION 1
 #define SYSLOG_PORT 514
 #define SECTOR_SIZE 2352
-#define BATCH_SIZE 16
+#define BATCH_SIZE 2
 #define FRAMES_PER_SECTOR (SECTOR_SIZE / 4)  // bytes per stereo frame
 #define BUFFER_SIZE (FRAMES_PER_SECTOR * BATCH_SIZE)
 
+#define WRITE_CHANNELS 2  // 1: Mono, 2: Stereo
 #define FORMAT SoundFormatSigned16
 #define TYPE s16
 #define TYPE_SIZE sizeof(s16)

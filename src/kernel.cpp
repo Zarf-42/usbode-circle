@@ -160,6 +160,15 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("=====================================");
+    
+    // Initialize sound
+    const char *pSoundDevice = m_Options.GetSoundDevice ();
+    if (strcmp (pSoundDevice, "sndi2s") == 0) { 
+	LOGNOTE("Enabling i2s sound device");
+	m_pSound = new CI2SSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, CHUNK_SIZE, FALSE, &m_I2CMaster, DAC_I2C_ADDRESS);
+    	new CCDPlayer(m_pSound);
+	LOGNOTE("Enabled i2s sound device");
+    }
 
     // Load our current disc image
     const char *imageName = Properties.GetString("current_image", "image.iso");
@@ -202,14 +211,6 @@ TShutdownMode CKernel::Run(void) {
         }
     }
 
-    // Initialize sound
-    const char *pSoundDevice = m_Options.GetSoundDevice ();
-    if (strcmp (pSoundDevice, "sndi2s") == 0) { 
-	LOGNOTE("Enabling i2s sound device");
-	m_pSound = new CI2SSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, CHUNK_SIZE, FALSE, &m_I2CMaster, DAC_I2C_ADDRESS);
-    	new CCDPlayer(m_pSound);
-	LOGNOTE("Enabled i2s sound device");
-    }
 
     bool showIP = true;
     static const char ServiceName[] = HOSTNAME;
@@ -270,6 +271,7 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Start the FTP Server
+	/*
         if (m_Net.IsRunning() && !m_pFTPDaemon) {
             m_pFTPDaemon = new CFTPDaemon("cdrom", "cdrom");
             if (!m_pFTPDaemon->Initialize()) {
@@ -279,6 +281,7 @@ TShutdownMode CKernel::Run(void) {
             } else
                 LOGNOTE("FTP daemon initialized");
         }
+	*/
 
         // Check for shutdown/reboot request from the web interface
         if (pCWebServer != nullptr) {
