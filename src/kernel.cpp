@@ -278,7 +278,6 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Start the FTP Server
-	/*
         if (m_Net.IsRunning() && !m_pFTPDaemon) {
             m_pFTPDaemon = new CFTPDaemon("cdrom", "cdrom");
             if (!m_pFTPDaemon->Initialize()) {
@@ -288,7 +287,6 @@ TShutdownMode CKernel::Run(void) {
             } else
                 LOGNOTE("FTP daemon initialized");
         }
-	*/
 
         // Check for shutdown/reboot request from the web interface
         if (pCWebServer != nullptr) {

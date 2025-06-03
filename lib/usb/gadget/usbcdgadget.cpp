@@ -282,18 +282,21 @@ const CUETrackInfo* CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
     cueParser.restart();
     const CUETrackInfo* trackInfo = nullptr;
     const CUETrackInfo* lastTrackInfo = nullptr;
-    MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Searching for LBA %u", lba);
+    //MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Searching for LBA %u", lba);
     cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-            MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
-        if (trackInfo->track_start > lba) {
-            MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d with sector size of %lu", lba, lastTrackInfo->track_number, lastTrackInfo->sector_length);
+            //MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
+	    if (trackInfo->track_start == lba)
+		    return trackInfo;
+
+        if (lastTrackInfo != nullptr && trackInfo->track_start > lba) {
+            //MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d with sector size of %lu", lba, lastTrackInfo->track_number, lastTrackInfo->sector_length);
             return lastTrackInfo;
         }
 
         lastTrackInfo = trackInfo;
     }
-    MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Didn't find LBA %lu", lba);
+    //MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Didn't find LBA %lu", lba);
     return nullptr;
 }
 
@@ -1004,7 +1007,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    unsigned int track_number = m_CBW.CBWCB[6];
 	    int length = 0;
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, subq = %u, parameter_list = 0x%02x, track_number = %u", allocationLength, msf, subq, parameter_list, track_number);
+            //MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, subq = %u, parameter_list = 0x%02x, track_number = %u", allocationLength, msf, subq, parameter_list, track_number);
 
 		CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 
