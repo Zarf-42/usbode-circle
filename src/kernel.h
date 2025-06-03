@@ -91,8 +91,8 @@ private:
 	// SPI and display components
 	CSPIMaster* m_pSPIMaster;
 	CDisplayManager* m_pDisplayManager;
-	CI2CMaster m_I2CMaster;
-	CSoundBaseDevice *m_pSound;
+	//CI2CMaster m_I2CMaster;
+	//CSoundBaseDevice *m_pSound;
 
 	// Helper method to parse display type from config.txt
 	TDisplayType ParseDisplayType(void);

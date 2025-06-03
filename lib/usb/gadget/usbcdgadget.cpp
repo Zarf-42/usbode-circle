@@ -282,17 +282,18 @@ const CUETrackInfo* CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
     cueParser.restart();
     const CUETrackInfo* trackInfo = nullptr;
     const CUETrackInfo* lastTrackInfo = nullptr;
-    int track = 0;
+    MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Searching for LBA %u", lba);
     cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-        MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "At track number = %d, track_start = %d", trackInfo->track_number, trackInfo->track_start);
+            MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
         if (trackInfo->track_start > lba) {
-            MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "LBA %lu is in track %s with sector size of %lu", lba, track, trackInfo->sector_length);
+            MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d with sector size of %lu", lba, lastTrackInfo->track_number, lastTrackInfo->sector_length);
             return lastTrackInfo;
         }
 
         lastTrackInfo = trackInfo;
     }
+    MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Didn't find LBA %lu", lba);
     return nullptr;
 }
 
@@ -907,9 +908,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                 cueParser.restart();
                 while ((trackInfo = cueParser.next_track()) != nullptr) {
                     // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
-                    tocEntries[index].ADR_Control = 0x14;
+                    tocEntries[index].ADR_Control = 0x04;
                     if (trackInfo->track_mode == CUETrack_AUDIO)
-                        tocEntries[index].ADR_Control = 0x11;
+                        tocEntries[index].ADR_Control = 0x00;
                     tocEntries[index].reserved = 0x00;
                     tocEntries[index].TrackNumber = trackInfo->track_number;
                     tocEntries[index].reserved2 = 0x00;
@@ -997,56 +998,92 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x42:  // READ SUB-CHANNEL CMD
         {
             int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d", allocationLength);
+	    unsigned int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
+	    unsigned int subq = (m_CBW.CBWCB[2] >> 6) & 0x01;
+	    unsigned int parameter_list = m_CBW.CBWCB[3];
+	    unsigned int track_number = m_CBW.CBWCB[6];
+	    int length = 0;
 
-            static const uint8_t stubSubChannelResponse[] = {
-                // Header (Bytes 0-3)
-                0x00, 0x0A,  // Data Length (0x0A = 10 bytes for Q-channel data)
-                0x00,        // Reserved
-                0x13,        // Audio Status: 0x13 = Audio play operation stopped
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, subq = %u, parameter_list = 0x%02x, track_number = %u", allocationLength, msf, subq, parameter_list, track_number);
 
-                // Q-Channel Data (Bytes 4-15, as described below)
-                0x01,  // Current Track Number (BCD: 01)
-                0x01,  // Current Index Number (BCD: 01)
-                0x00,  // Absolute MSF (Minutes) (BCD: 00)
-                0x00,  // Absolute MSF (Seconds) (BCD: 00)
-                0x00,  // Absolute MSF (Frames)  (BCD: 00)
-                0x00,  // Reserved (Control flags/ADR/etc. - usually 0 for audio)
-                0x00,  // Track MSF (Minutes)    (BCD: 00)
-                0x00,  // Track MSF (Seconds)    (BCD: 00)
-                0x00,  // Track MSF (Frames)     (BCD: 00)
-                0x00,  // Reserved (Q-channel CRC MSB)
-                0x00,  // Reserved (Q-channel CRC LSB)
+		CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 
-                // Remainder of 96 bytes (Bytes 16-95) - typically all zeros if not used
-                // These bytes are for P/R/S/T/U/V/W sub-channel data or reserved.
-                // For a simple stub, zeroing them out is perfectly fine.
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ... and so on for 80 more bytes
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	    switch (parameter_list) {
+	    	case 0x01:
+		{
+			// CD Current Position
+			TUSBCDSubChannelHeaderReply header;
+			memset(&header, 0, sizeof(header));
+			
+			// Get the CD Player
+			header.audioStatus = 0x00; // Audio status not supported
+			if (cdplayer) {
+				unsigned int state = cdplayer->GetState();
+				switch (state) {
+					case 3:
+						header.audioStatus = 0x11; // Playing
+						break;
+					case 0:
+						if (cdplayer->HadError()) {
+							header.audioStatus = 0x14; // Stopped with error
+						} else {
+							header.audioStatus = 0x13; // Stopped without error
+						}
+						break;
+					//TODO Must implement 0x12 (paused)
+					default:
+						header.audioStatus = 0x15; // No status to return
+						break;
+				}
+			}
 
-            int datalen = sizeof(stubSubChannelResponse);
-            if (allocationLength < datalen)
-                datalen = allocationLength;
+			TUSBCDSubChannel01CurrentPositionReply data;
+			memset(&data, 0, sizeof(data));
+			data.dataFormatCode = 0x01;
 
-            // Copy stub data into IN buffer
-            memcpy(m_InBuffer, stubSubChannelResponse, datalen);
+			if (cdplayer) {
+				u32 address = cdplayer->GetCurrentAddress();
+				data.absoluteAddress = htonl(GetAddress(address, msf));
+				const CUETrackInfo* trackInfo = GetTrackInfoForLBA(address);
+				if (trackInfo) {
+					data.trackNumber = trackInfo->track_number;
+					data.relativeAddress = htonl(address - trackInfo->track_start);
+				}
+			}
+
+			// apply lengths
+			header.dataLength = sizeof(data);
+			length = sizeof(header) + sizeof(data);
+
+                        // Copy the header & Code Page
+                        memcpy(m_InBuffer, &header, sizeof(header));
+                        memcpy(m_InBuffer + sizeof(header), &data, sizeof(data));
+			break;
+		}
+
+		case 0x02:
+		{
+			// Media Catalog Number (UPC Bar Code)
+			break;
+		}
+
+		case 0x03:
+		{
+			// International Standard Recording Code (ISRC)
+			break;
+		}
+
+		default:
+		{
+			// TODO Error
+		}
+	    }
+
+            if (allocationLength < length)
+                length = allocationLength;
 
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, datalen);
+                                       m_InBuffer, length);
 
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
@@ -1203,18 +1240,39 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+        case 0x2B:  // SEEK
+        {
+
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SEEK");
+
+            // Where to start reading (LBA)
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+	    // Hand the device to the CD Player
+            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+            if (cdplayer) {
+                    cdplayer->Seek(m_nblock_address);
+            } 
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            m_ReqSenseReply.bSenseKey = bSenseKey;
+            m_ReqSenseReply.bAddlSenseCode = bAddlSenseCode;
+	    SendCSW();
+            break;
+        }
+
         case 0x47:  // PLAY AUDIO MSF
         {
 
 	    // Start
-	    u8 SM = m_CBW.CBWCB[2];
-	    u8 SS = m_CBW.CBWCB[3];
-	    u8 SF = m_CBW.CBWCB[4];
+	    u8 SM = m_CBW.CBWCB[3];
+	    u8 SS = m_CBW.CBWCB[4];
+	    u8 SF = m_CBW.CBWCB[5];
 
 	    // End
-	    u8 EM = m_CBW.CBWCB[5];
-	    u8 ES = m_CBW.CBWCB[6];
-	    u8 EF = m_CBW.CBWCB[7];
+	    u8 EM = m_CBW.CBWCB[6];
+	    u8 ES = m_CBW.CBWCB[7];
+	    u8 EF = m_CBW.CBWCB[8];
 	    
 
 	    u32 start_lba = msf_to_lba(SM, SS, SF);

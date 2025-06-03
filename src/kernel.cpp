@@ -23,7 +23,7 @@
 #include <circle/sound/i2ssoundbasedevice.h>
 #include <ftpserver/ftpdaemon.h>
 #include "util.h"
-#include "config.h"
+//#include "config.h"
 #include "webserver.h"
 
 #define DRIVE "SD:"
@@ -49,10 +49,13 @@ CKernel::CKernel(void)
       m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
       m_CDGadget(&m_Interrupt),
       m_pSPIMaster(nullptr),
-      m_pDisplayManager(nullptr),
+      m_pDisplayManager(nullptr)
+/*
       m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE),
       m_pSound(0) {
-    // m_ActLED.Blink (5);	// show we are alive
+*/
+{
+     m_ActLED.Blink (5);	// show we are alive
 }
 
 CKernel::~CKernel(void) {
@@ -100,9 +103,11 @@ boolean CKernel::Initialize(void) {
         LOGNOTE("Initialized timer");
     }
 
+    /*
     if (bOK) {
         bOK = m_I2CMaster.Initialize();
     }
+    */
 
     if (bOK) {
         bOK = m_EMMC.Initialize();
@@ -165,10 +170,12 @@ TShutdownMode CKernel::Run(void) {
     const char *pSoundDevice = m_Options.GetSoundDevice ();
     if (strcmp (pSoundDevice, "sndi2s") == 0) { 
 	LOGNOTE("Enabling i2s sound device");
-	m_pSound = new CI2SSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, CHUNK_SIZE, FALSE, &m_I2CMaster, DAC_I2C_ADDRESS);
-    	new CCDPlayer(m_pSound);
+	//m_pSound = new CI2SSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, CHUNK_SIZE, FALSE, &m_I2CMaster, DAC_I2C_ADDRESS);
+    	//new CCDPlayer(m_pSound);
+    	new CCDPlayer(pSoundDevice);
 	LOGNOTE("Enabled i2s sound device");
     }
+
 
     // Load our current disc image
     const char *imageName = Properties.GetString("current_image", "image.iso");

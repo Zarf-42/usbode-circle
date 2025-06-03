@@ -39,25 +39,29 @@
 #define SYSLOG_VERSION 1
 #define SYSLOG_PORT 514
 #define SECTOR_SIZE 2352
-#define BATCH_SIZE 2
-#define FRAMES_PER_SECTOR (SECTOR_SIZE / 4)  // bytes per stereo frame
-#define BUFFER_SIZE (FRAMES_PER_SECTOR * BATCH_SIZE)
+#define BATCH_SIZE 16 
+#define BYTES_PER_FRAME 4
+#define FRAMES_PER_SECTOR (SECTOR_SIZE / BYTES_PER_FRAME)
+#define BUFFER_SIZE_FRAMES (FRAMES_PER_SECTOR * BATCH_SIZE)
+#define BUFFER_SIZE_BYTES (BUFFER_SIZE_FRAMES * BYTES_PER_FRAME)
 
+#define SOUND_CHUNK_SIZE      (384 * 10)
+#define SAMPLE_RATE 44100
 #define WRITE_CHANNELS 2  // 1: Mono, 2: Stereo
 #define FORMAT SoundFormatSigned16
-#define TYPE s16
-#define TYPE_SIZE sizeof(s16)
-#define FACTOR ((1 << 15) - 1)
-#define NULL_LEVEL 0
+#define DAC_I2C_ADDRESS 0
 
 class CCDPlayer : public CTask {
    public:
-    CCDPlayer(CSoundBaseDevice *pSound);
+    CCDPlayer(const char *pSoundDevice);
     ~CCDPlayer(void);
     boolean Initialize();
     boolean SetDevice(CDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
+    unsigned int GetState();
+    boolean HadError();
+    u32 GetCurrentAddress();
     boolean Seek(u32 lba);
     boolean Play(u32 lba, u32 num_blocks);
     void Run(void);
@@ -71,6 +75,9 @@ class CCDPlayer : public CTask {
 
    private:
    private:
+    const char *m_pSoundDevice;
+    CI2CMaster m_I2CMaster;
+    CInterruptSystem m_Interrupt;
     CSynchronizationEvent m_Event;
     static CCDPlayer *s_pThis;
     CSoundBaseDevice *m_pSound;
@@ -78,7 +85,8 @@ class CCDPlayer : public CTask {
     u32 address;
     u32 end_address;
     PlayState state;
-    u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE];
+    u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE_BYTES];
+    boolean has_error;
 };
 
 #endif

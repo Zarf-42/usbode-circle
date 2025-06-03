@@ -281,6 +281,21 @@ struct TUSBCDGetConfigurationReply {
 // #define SIZE_GET_CONFIGURATION_REPLY 18
 #define SIZE_GET_CONFIGURATION_REPLY 4
 
+struct TUSBCDSubChannelHeaderReply {
+	u8 reserved;
+	u8 audioStatus;
+	u16 dataLength;
+} PACKED;
+
+struct TUSBCDSubChannel01CurrentPositionReply {
+	u8 dataFormatCode; // this should be 0x01
+	u8 adrControl; // 0x00 = Q Sub-channel mode information not supplied / 2 audio channels without pre-emphasis
+	u8 trackNumber;
+	u32 absoluteAddress;
+	u32 relativeAddress;
+} PACKED;
+
+
 class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 {
    public:

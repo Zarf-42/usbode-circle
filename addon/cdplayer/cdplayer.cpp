@@ -30,8 +30,10 @@ LOGMODULE("cdplayer");
 
 CCDPlayer *CCDPlayer::s_pThis = 0;
 
-CCDPlayer::CCDPlayer(CSoundBaseDevice *pSound)
-    : m_pSound(pSound)
+CCDPlayer::CCDPlayer(const char *pSoundDevice)
+: 
+	m_pSoundDevice(pSoundDevice),
+	m_I2CMaster (CMachineInfo::Get ()->GetDevice (DeviceI2CMaster), TRUE)
 {
     assert(m_pSound != 0);
 
@@ -41,6 +43,7 @@ CCDPlayer::CCDPlayer(CSoundBaseDevice *pSound)
 
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
+    has_error = false;
     Initialize();
 }
 
@@ -53,10 +56,48 @@ boolean CCDPlayer::SetDevice(CDevice *pBinFileDevice) {
 }
 
 boolean CCDPlayer::Initialize() {
+
+	LOGNOTE("CD Player Initializing I2CMaster");
+       	m_I2CMaster.Initialize();
+
+        if (strcmp (m_pSoundDevice, "sndpwm") == 0)
+        {
+                m_pSound = new CPWMSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+		LOGNOTE("CD Player Initializing sndpwm");
+        }
+        else if (strcmp (m_pSoundDevice, "sndi2s") == 0)
+        {
+                m_pSound = new CI2SSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
+                                                    &m_I2CMaster, DAC_I2C_ADDRESS);
+		LOGNOTE("CD Player Initializing sndi2c");
+        }
+        else if (strcmp (m_pSoundDevice, "sndhdmi") == 0)
+        {
+                m_pSound = new CHDMISoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+		LOGNOTE("CD Player Initializing sndhdmi");
+        }
+#if RASPPI >= 4
+        else if (strcmp (m_pSoundDevice, "sndusb") == 0)
+        {
+                m_pSound = new CUSBSoundBaseDevice (SAMPLE_RATE);
+		LOGNOTE("CD Player Initializing sndusb");
+        }
+#endif
+/*
+        else
+        {
+ #ifdef USE_VCHIQ_SOUND
+                m_pSound = new CVCHIQSoundBaseDevice (&m_VCHIQ, SAMPLE_RATE, SOUND_CHUNK_SIZE,
+                                        (TVCHIQSoundDestination) m_Options.GetSoundOption ());
+ #else
+                m_pSound = new CPWMSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+ #endif
+        }
+*/
+
     // configure sound device
-    LOGNOTE("CD Player Initializing. Allocating queue size %d frames", BUFFER_SIZE);
-    // TODO: set up the sound device in kernel.cpp
-    if (!m_pSound->AllocateQueueFrames(BUFFER_SIZE)) {
+    LOGNOTE("CD Player Initializing. Allocating queue size %d frames", BUFFER_SIZE_FRAMES);
+    if (!m_pSound->AllocateQueueFrames(BUFFER_SIZE_FRAMES)) {
                 LOGERR("Cannot allocate sound queue");
                 // TODO: handle error condition
     }
@@ -64,9 +105,6 @@ boolean CCDPlayer::Initialize() {
     if (!m_pSound->Start()) {
 	    LOGERR("Couldn't start the sound device");
     }
-    unsigned int total_queue_size = m_pSound->GetQueueSizeFrames();
-    boolean isActive = m_pSound->IsActive();
-    LOGNOTE("CD Player Initializing. Allocated queue size %u frames. Player active %d", total_queue_size, isActive);
 
     return TRUE;
 }
@@ -88,11 +126,28 @@ boolean CCDPlayer::Resume() {
 }
 
 boolean CCDPlayer::Seek(u32 lba) {
+
     // See to the new lba
     LOGNOTE("CD Player seeking to %u", lba);
     address = lba;
     state = SEEK;
     return true;
+}
+
+unsigned int CCDPlayer::GetState() {
+	return state;
+}
+
+boolean CCDPlayer::HadError() {
+	if (has_error) {
+		has_error = false;
+		return true;
+	}
+	return false;
+}
+
+u32 CCDPlayer::GetCurrentAddress() {
+	return address;
 }
 
 boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
@@ -123,8 +178,8 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
 }
 
 void CCDPlayer::Run(void) {
-    unsigned int total_queue_size = m_pSound->GetQueueSizeFrames();
-    LOGNOTE("CD Player Run Loop initializing. Queue Size is %d frames", total_queue_size);
+    unsigned int total_frames = m_pSound->GetQueueSizeFrames();
+    LOGNOTE("CD Player Run Loop initializing. Queue Size is %d frames", total_frames);
 
     // Play loop
     while (true) {
@@ -136,6 +191,8 @@ void CCDPlayer::Run(void) {
                 if (state == SEEK_PLAY) {
                     LOGNOTE("Switching to PLAY mode");
                     state = PLAY;
+		} else {
+		    state = STOP;
 		}
             } else {
                 LOGERR("Error seeking");
@@ -147,29 +204,37 @@ void CCDPlayer::Run(void) {
 
         while (state == PLAY) {
             // Get available queue size in stereo frames
-            unsigned int available_queue_size = total_queue_size - m_pSound->GetQueueFramesAvail();
+            unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
 
-            // Determine how many *full CD sectors* can fit into this free space
-            //    (1 CD sector = 588 stereo frames)
-            unsigned int sectors_that_can_fit_in_queue = available_queue_size / FRAMES_PER_SECTOR;
-
-            int bytes_to_read = SECTOR_SIZE * sectors_that_can_fit_in_queue;
+            // Determine how many  frames (4 bytes) can fit in this free space
+            int bytes_to_read = available_queue_size * BYTES_PER_FRAME; // 2 bytes per sample, 2 samples per frame
 
             if (bytes_to_read) {
-		LOGNOTE("Reading %u bytes", bytes_to_read);
+		//LOGNOTE("Reading %u bytes", bytes_to_read);
                 // Perform the single large read
                 int readCount = m_pBinFileDevice->Read(m_FileChunk, bytes_to_read);
-                LOGDBG("Read %d bytes", readCount);
+                //LOGDBG("Read %d bytes", readCount);
 
                 if (readCount < bytes_to_read) {
                     // Handle error: partial read
                     LOGERR("Partial read");
+		    has_error = true;
                     // TODO store error condition and return via dedicated method call
                     state = STOP;
                     break;
                 }
 
-		LOGNOTE("We are at %u", address);
+                // Write to sound device
+                int writeCount = m_pSound->Write(m_FileChunk, readCount);
+                if (writeCount != readCount) {
+                    LOGERR("Truncated write, audio dropped");
+                    // TODO store error condition and return via dedicated method call
+                    state = STOP;
+		    has_error = true;
+                    break;
+                }
+		
+		//LOGNOTE("We are at %u", address);
                 // Keep track of where we are
                 address += (readCount / SECTOR_SIZE);
 
@@ -179,16 +244,6 @@ void CCDPlayer::Run(void) {
 			state = STOP;
 			break;
 		}
-
-                // Write to sound device
-		LOGNOTE("About to write %d bytes", readCount);
-                int writeCount = m_pSound->Write(m_FileChunk, readCount);
-                if (writeCount != readCount) {
-                    LOGERR("Couldn't write to sound device");
-                    // TODO store error condition and return via dedicated method call
-                    state = STOP;
-                    break;
-                }
             }
 
             // Let other tasks have cpu time
