@@ -978,12 +978,6 @@ void CDisplayManager::Refresh(void)
     }
 }
 
-void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel)
-{
-    // Currently not implemented
-    // This would show a brief button press indicator on the screen
-}
-
 // Modified function to draw button letters directly using lines
 void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* screenType)
 {
