@@ -405,7 +405,7 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData* pSetupData, u8* pData
 }
 
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
-    //MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
+    // MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
     assert(m_nState != TCDState::Init);
     if (bIn)  // packet to host has been transferred
     {
@@ -472,10 +472,10 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
 
             case TCDState::DataOut: {
                 MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ", m_nState, bIn ? "IN" : "OUT", nLength);
-                //process block from host
-                //assert(m_nnumber_blocks>0);
+                // process block from host
+                // assert(m_nnumber_blocks>0);
 
-		ProcessOut(nLength);
+                ProcessOut(nLength);
 
                 /*
                 if(m_CDReady)
@@ -506,40 +506,38 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
 }
 
 void CUSBCDGadget::ProcessOut(size_t nLength) {
+    // This code is assuming that the payload is a Mode Select payload. I think
+    // at the moment, this is the only thing likely to appear here.
+    // TODO: somehow validate what this data is
 
-	// This code is assuming that the payload is a Mode Select payload. I think
-	// at the moment, this is the only thing likely to appear here. 
-	// TODO: somehow validate what this data is
+    MLOGNOTE("ProcessOut",
+             "nLength is %d, payload is %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+             nLength,
+             m_OutBuffer[0], m_OutBuffer[1], m_OutBuffer[2], m_OutBuffer[3],
+             m_OutBuffer[4], m_OutBuffer[5], m_OutBuffer[6], m_OutBuffer[7],
+             m_OutBuffer[8], m_OutBuffer[9], m_OutBuffer[10], m_OutBuffer[11],
+             m_OutBuffer[12], m_OutBuffer[13], m_OutBuffer[14], m_OutBuffer[15],
+             m_OutBuffer[16], m_OutBuffer[17], m_OutBuffer[18], m_OutBuffer[19],
+             m_OutBuffer[20], m_OutBuffer[21], m_OutBuffer[22], m_OutBuffer[23]);
 
-	MLOGNOTE("ProcessOut",
-         "nLength is %d, payload is %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
-	 nLength,
-         m_OutBuffer[0], m_OutBuffer[1], m_OutBuffer[2], m_OutBuffer[3],
-         m_OutBuffer[4], m_OutBuffer[5], m_OutBuffer[6], m_OutBuffer[7],
-         m_OutBuffer[8], m_OutBuffer[9], m_OutBuffer[10], m_OutBuffer[11],
-         m_OutBuffer[12], m_OutBuffer[13], m_OutBuffer[14], m_OutBuffer[15],
-         m_OutBuffer[16], m_OutBuffer[17], m_OutBuffer[18], m_OutBuffer[19],
-         m_OutBuffer[20], m_OutBuffer[21], m_OutBuffer[22], m_OutBuffer[23]);
+    // Process our Parameter List
+    u8 modePage = m_OutBuffer[9];
 
-	 // Process our Parameter List
-         u8 modePage = m_OutBuffer[9];
-
-            switch (modePage) {
-		    
-                // CDROM Audio Control Page
-                case 0x0e: {
-                        ModePage0x0EData* modePage = (ModePage0x0EData*)(m_OutBuffer + 8);
-                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
-                        CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-                        if (cdplayer) {
-				// This is disabled because it needs more testing
-				// Perhaps there's something I'm missing here
-				// Quake, for example, always sends 00 as the volume level :O
-                            //cdplayer->SetVolume(modePage->Output0Volume);
-                        }
-                        break;
-                }
+    switch (modePage) {
+        // CDROM Audio Control Page
+        case 0x0e: {
+            ModePage0x0EData* modePage = (ModePage0x0EData*)(m_OutBuffer + 8);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
+            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+            if (cdplayer) {
+                // This is disabled because it needs more testing
+                // Perhaps there's something I'm missing here
+                // Quake, for example, always sends 00 as the volume level :O
+                // cdplayer->SetVolume(modePage->Output0Volume);
             }
+            break;
+        }
+    }
 }
 
 // will be called before vendor request 0xfe
@@ -776,7 +774,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     } break;
                     default:  // Unsupported VPD Page
                         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
-                        //m_nState = TCDState::DataIn;
+                        // m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
 
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // FIXME throw CD_CSW_STATUS_FAIL but implement sense response
@@ -1461,9 +1459,8 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataOut,
                                         m_OutBuffer, transferLength);
 
-	    // Unfortunately the payload doesn't arrive here. Check out the
-	    // ProcessOut method for payload processing
-
+            // Unfortunately the payload doesn't arrive here. Check out the
+            // ProcessOut method for payload processing
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
@@ -1547,11 +1544,11 @@ void CUSBCDGadget::HandleSCSICommand() {
                 case 0x0e: {
                     // Mode Page 0x0E (CD Audio Control Page)
 
-                        CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-                        u8 volume = 0xff;
-                        if (cdplayer) {
-                            volume = cdplayer->GetVolume();
-                        }
+                    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+                    u8 volume = 0xff;
+                    if (cdplayer) {
+                        volume = cdplayer->GetVolume();
+                    }
 
                     // Define our response
                     ModeSense10Header reply_header;

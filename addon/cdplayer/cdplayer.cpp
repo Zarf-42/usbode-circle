@@ -105,12 +105,12 @@ CCDPlayer::~CCDPlayer(void) {
 }
 
 u8 CCDPlayer::GetVolume() {
-	return volumeByte;
+    return volumeByte;
 }
 
 boolean CCDPlayer::SetVolume(u8 vol) {
-	volumeByte = vol;
-	return true;
+    volumeByte = vol;
+    return true;
 }
 
 boolean CCDPlayer::Pause() {
@@ -152,56 +152,51 @@ u32 CCDPlayer::GetCurrentAddress() {
 // Loads a sample from "test.pcm" and plays it
 // Returns false if there was any problem
 boolean CCDPlayer::SoundTest() {
+    if (!m_pSound->IsActive()) {
+        LOGERR("Sound Test: Can't perform test, sound is not active");
+        return false;
+    }
 
-	if (!m_pSound->IsActive()) {
-		LOGERR("Sound Test: Can't perform test, sound is not active");
-		return false;
-	}
+    FIL file;
+    FRESULT Result = f_open(&file, "test.pcm", FA_READ);
+    if (Result != FR_OK) {
+        LOGERR("Sound Test: Can't open test.pcm");
+        return false;
+    }
 
-	FIL file;
-	FRESULT Result = f_open(&file, "test.pcm", FA_READ);
-        if (Result != FR_OK) {
-                LOGERR("Sound Test: Can't open test.pcm");
-                return false;
+    unsigned int total_frames = m_pSound->GetQueueSizeFrames();
+    UINT bytesRead = 0;
+
+    // Read sound bytes and give them to the DAC
+    for (unsigned nCount = 0; m_pSound->IsActive(); nCount++) {
+        // Get available queue size in stereo frames
+        unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
+
+        // Determine how many  frames (4 bytes) can fit in this free space
+        int bytes_to_read = available_queue_size * BYTES_PER_FRAME;  // 2 bytes per sample, 2 samples per frame
+
+        if (bytes_to_read) {
+            if (f_read(&file, m_FileChunk, bytes_to_read, &bytesRead) != FR_OK) {
+                LOGERR("Sound Test: Failed to read audio data");
+                break;
+            }
+
+            if (bytesRead == 0) {
+                LOGNOTE("Sound test: finished successfully");
+                break;
+            }
+
+            int nResult = m_pSound->Write(m_FileChunk, bytesRead);
+            if (nResult != (int)bytesRead) {
+                LOGERR("Sound Test: data dropped");
+                break;
+            }
         }
 
-	unsigned int total_frames = m_pSound->GetQueueSizeFrames();
-	UINT bytesRead = 0;
-
-	// Read sound bytes and give them to the DAC
-        for (unsigned nCount = 0; m_pSound->IsActive (); nCount++)
-        {
-
-                // Get available queue size in stereo frames
-                unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
-
-                // Determine how many  frames (4 bytes) can fit in this free space
-                int bytes_to_read = available_queue_size * BYTES_PER_FRAME; // 2 bytes per sample, 2 samples per frame
-
-                if (bytes_to_read) {
-
-                        if (f_read(&file, m_FileChunk, bytes_to_read, &bytesRead) != FR_OK) {
-                                LOGERR("Sound Test: Failed to read audio data");
-				break;
-                        }
-
-			if (bytesRead == 0) {
-				LOGNOTE("Sound test: finished successfully");
-				break;
-			}
-
-                        int nResult = m_pSound->Write (m_FileChunk, bytesRead);
-                        if (nResult != (int) bytesRead)
-                        {
-                                LOGERR("Sound Test: data dropped");
-				break;
-                        }
-                }
-
-                CScheduler::Get()->Yield();
-        }
-	f_close(&file);
-	return false;
+        CScheduler::Get()->Yield();
+    }
+    f_close(&file);
+    return false;
 }
 
 boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
@@ -298,9 +293,9 @@ void CCDPlayer::Run(void) {
                     break;
                 }
 
-		// Scale the volume
-		if (volumeByte != 0xff)
-			ScaleVolume(m_FileChunk, readCount);
+                // Scale the volume
+                if (volumeByte != 0xff)
+                    ScaleVolume(m_FileChunk, readCount);
 
                 // Write to sound device
                 int writeCount = m_pSound->Write(m_FileChunk, readCount);
