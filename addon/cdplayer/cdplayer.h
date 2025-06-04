@@ -51,6 +51,9 @@
 #define FORMAT SoundFormatSigned16
 #define DAC_I2C_ADDRESS 0
 
+#define VOLUME_SCALE_BITS 12 // 1.0 = 4096
+#define VOLUME_STEPS 16
+
 class CCDPlayer : public CTask {
    public:
     CCDPlayer(const char *pSoundDevice);
@@ -59,21 +62,27 @@ class CCDPlayer : public CTask {
     boolean SetDevice(CDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
+    boolean Volume(u8 vol);
     unsigned int GetState();
     boolean HadError();
     u32 GetCurrentAddress();
     boolean Seek(u32 lba);
     boolean Play(u32 lba, u32 num_blocks);
+    boolean SoundTest();
     void Run(void);
 
     enum PlayState {
-        STOP,
-        SEEK,
-        SEEK_PLAY,
-        PLAY
+        PLAYING,
+        SEEKING,
+        SEEKING_PLAYING,
+        STOPPED_OK,
+        STOPPED_ERROR,
+        PAUSED,
+	NONE
     };
 
    private:
+    void ScaleVolume(u8 *buffer, u32 byteCount);
    private:
     const char *m_pSoundDevice;
     CI2CMaster m_I2CMaster;
@@ -87,6 +96,11 @@ class CCDPlayer : public CTask {
     PlayState state;
     u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE_BYTES];
     boolean has_error;
+    u8 volumeByte = 255;
+    const u16 s_VolumeTable[VOLUME_STEPS] = {
+	    0,    273,  546,  819,  1092, 1365, 1638, 1911,
+	    2184, 2457, 2730, 3003, 3276, 3549, 3822, 4096
+	};
 };
 
 #endif

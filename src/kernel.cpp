@@ -172,8 +172,9 @@ TShutdownMode CKernel::Run(void) {
 	LOGNOTE("Enabling i2s sound device");
 	//m_pSound = new CI2SSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, CHUNK_SIZE, FALSE, &m_I2CMaster, DAC_I2C_ADDRESS);
     	//new CCDPlayer(m_pSound);
-    	new CCDPlayer(pSoundDevice);
+    	CCDPlayer *player = new CCDPlayer(pSoundDevice);
 	LOGNOTE("Enabled i2s sound device");
+	player->SoundTest();
     }
 
 
@@ -306,7 +307,6 @@ TShutdownMode CKernel::Run(void) {
             }
         }
 
-        m_Scheduler.Yield();
 
         // Periodic status update
         unsigned currentTime = m_Timer.GetTicks();
@@ -320,8 +320,8 @@ TShutdownMode CKernel::Run(void) {
             lastStatusUpdate = currentTime;
         }
 
-        // Stop spinning
-        // m_Scheduler.MsSleep(10);
+        m_Scheduler.Yield();
+
     }
 
     LOGNOTE("ShutdownHalt");
