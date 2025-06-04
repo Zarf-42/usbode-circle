@@ -104,7 +104,11 @@ CCDPlayer::~CCDPlayer(void) {
     s_pThis = 0;
 }
 
-boolean CCDPlayer::Volume(u8 vol) {
+u8 CCDPlayer::GetVolume() {
+	return volumeByte;
+}
+
+boolean CCDPlayer::SetVolume(u8 vol) {
 	volumeByte = vol;
 	return true;
 }

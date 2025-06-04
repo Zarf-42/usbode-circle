@@ -174,7 +174,7 @@ TShutdownMode CKernel::Run(void) {
     	//new CCDPlayer(m_pSound);
     	CCDPlayer *player = new CCDPlayer(pSoundDevice);
 	LOGNOTE("Enabled i2s sound device");
-	player->SoundTest();
+	//player->SoundTest();
     }
 
 

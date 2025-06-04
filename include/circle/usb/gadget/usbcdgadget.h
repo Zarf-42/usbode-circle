@@ -356,6 +356,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     void OnActivate();  // called from OUT ep
 
+    void ProcessOut(size_t nLength);
+
    private:
     void HandleSCSICommand();
 

@@ -62,7 +62,8 @@ class CCDPlayer : public CTask {
     boolean SetDevice(CDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
-    boolean Volume(u8 vol);
+    boolean SetVolume(u8 vol);
+    u8 GetVolume();
     unsigned int GetState();
     boolean HadError();
     u32 GetCurrentAddress();
